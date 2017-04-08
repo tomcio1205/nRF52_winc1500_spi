@@ -57,15 +57,16 @@ $(abspath ../../../../../external/segger_rtt/RTT_Syscalls_GCC.c) \
 $(abspath ../../../../../external/segger_rtt/SEGGER_RTT.c) \
 $(abspath ../../../../../external/segger_rtt/SEGGER_RTT_printf.c) \
 $(abspath ../../../../../components/toolchain/system_nrf52.c) \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/bus_wrapper/source/nm_bus_wrapper_samd21.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/bsp/source/nm_bsp_samd21.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/driver/source/m2m_wifi.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/driver/source/m2m_hif.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/common/source/nm_common.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/driver/source/nmdrv.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/driver/source/nmasic.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/driver/source/nmbus.c \
-/usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source/driver/source/nmspi.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/bus_wrapper/source/nm_bus_wrapper_nrf52832.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/bsp/source/nm_bsp_nrf52832.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/m2m_wifi.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/m2m_hif.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/common/source/nm_common.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/nmdrv.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/nmasic.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/nmbus.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/nmspi.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/spi_flash/source/spi_flash.c \
 
 #assembly files common to all targets
 ASM_SOURCE_FILES  = $(abspath ../../../../../components/toolchain/gcc/gcc_startup_nrf52.s)
@@ -92,7 +93,7 @@ INC_PATHS += -I$(abspath ../../../../../components/drivers_nrf/config)
 INC_PATHS += -I$(abspath ../../../../../components/drivers_nrf/spi_master)
 INC_PATHS += -I$(abspath ../../../../../components/drivers_nrf/gpiote)
 INC_PATHS += -I$(abspath ../../../../../components/toolchain/gcc)
-INC_PATHS += -I /usr/local/gcc_arm/sal-driver-atmel-winc1500-master/source
+INC_PATHS += -I /usr/local/gcc_arm/sal-driver-atmel-winc1500/source
 INC_PATHS += -I /usr/local/gcc_arm/nRF5_SDK_11/examples/peripheral/spi/pca10040/armgcc
 
 OBJECT_DIRECTORY = _build
