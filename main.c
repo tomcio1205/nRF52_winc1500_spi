@@ -51,18 +51,41 @@ static uint8_t scan_request_index = 0;
 /** Number of APs found. */
 static uint8_t num_founded_ap = 0;
 
+typedef enum {
+	WL_NO_SHIELD = 255,
+	WL_IDLE_STATUS = 0,
+	WL_NO_SSID_AVAIL,
+	WL_SCAN_COMPLETED,
+	WL_CONNECTED,
+	WL_CONNECT_FAILED,
+	WL_CONNECTION_LOST,
+	WL_DISCONNECTED,
+	WL_AP_LISTENING,
+	WL_AP_CONNECTED,
+	WL_AP_FAILED,
+	WL_PROVISIONING,
+	WL_PROVISIONING_FAILED
+} wl_status_t;
+
+wl_status_t _status;
+static uint32_t _localip;
+static uint32_t _submask;
+static uint32_t _gateway;
+static int _dhcp;
+static uint32_t _resolve;
+static char _scan_ssid[M2M_MAX_SSID_LEN];
+static uint8_t _scan_auth;
+static uint8_t _scan_channel;
+static char _ssid[M2M_MAX_SSID_LEN];
+
 static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 {
 	switch (u8MsgType) {
 	case M2M_WIFI_RESP_SCAN_DONE:
 	{
 		tstrM2mScanDone *pstrInfo = (tstrM2mScanDone *)pvMsg;
-		scan_request_index = 0;
 		if (pstrInfo->u8NumofCh >= 1) {
-			m2m_wifi_req_scan_result(scan_request_index);
-			scan_request_index++;
-		} else {
-			m2m_wifi_request_scan(M2M_WIFI_CH_ALL);
+			_status = WL_SCAN_COMPLETED;
 		}
 
 		break;
@@ -71,45 +94,15 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 	case M2M_WIFI_RESP_SCAN_RESULT:
 	{
 		tstrM2mWifiscanResult *pstrScanResult = (tstrM2mWifiscanResult *)pvMsg;
-		uint16_t demo_ssid_len;
 		uint16_t scan_ssid_len = strlen((const char *)pstrScanResult->au8SSID);
-
-		/* display founded AP. */
-		NRF_LOG_PRINTF("[%d] SSID:%s\r\n", scan_request_index, pstrScanResult->au8SSID);
-
-		num_founded_ap = m2m_wifi_get_num_ap_found();
-//		NRF_LOG_PRINTF("Found %d networks", num);
-		for (int thisNet = 0; thisNet < num_founded_ap; thisNet++) {
-
+		memset(_scan_ssid, 0, M2M_MAX_SSID_LEN);
+		if (scan_ssid_len) {
+			memcpy(_scan_ssid, (const char *)pstrScanResult->au8SSID, scan_ssid_len);
 		}
-//		if (scan_ssid_len) {
-//			/* check same SSID. */
-//			demo_ssid_len = strlen((const char *)MAIN_WLAN_SSID);
-//			if
-//			(
-//				(demo_ssid_len == scan_ssid_len) &&
-//				(!memcmp(pstrScanResult->au8SSID, (uint8_t *)MAIN_WLAN_SSID, demo_ssid_len))
-//			) {
-//				/* A scan result matches an entry in the preferred AP List.
-//				 * Initiate a connection request.
-//				 */
-//				NRF_LOG_PRINTF("Found %s \r\n", MAIN_WLAN_SSID);
-//				m2m_wifi_connect((char *)MAIN_WLAN_SSID,
-//						sizeof(MAIN_WLAN_SSID),
-//						MAIN_WLAN_AUTH,
-//						(void *)MAIN_WLAN_PSK,
-//						M2M_WIFI_CH_ALL);
-//				break;
-//			}
-//		}
-
-		if (scan_request_index < num_founded_ap) {
-			m2m_wifi_req_scan_result(scan_request_index);
-			scan_request_index++;
-		} else {
-//			NRF_LOG_PRINTF("can not find AP %s\r\n", MAIN_WLAN_SSID);
-			m2m_wifi_request_scan(M2M_WIFI_CH_ALL);
-		}
+		_resolve = pstrScanResult->s8rssi;
+		_scan_auth = pstrScanResult->u8AuthType;
+		_scan_channel = pstrScanResult->u8ch;
+		_status = WL_SCAN_COMPLETED;
 
 		break;
 	}
@@ -138,6 +131,13 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 		break;
 	}
 
+	case M2M_WIFI_RESP_CURRENT_RSSI:
+	{
+		/* This message type is triggered by "m2m_wifi_req_curr_rssi()" function. */
+		_resolve = *((int8_t *)pvMsg);
+		break;
+	}
+
 	default:
 	{
 		break;
@@ -157,6 +157,88 @@ void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
 //    {
 //        NRF_LOG_PRINTF(" Received: %s\r\n",m_rx_buf);
 //    }
+}
+
+int8_t scanNetworks()
+{
+	wl_status_t tmp = _status;
+	// Start scan:
+	if (m2m_wifi_request_scan(M2M_WIFI_CH_ALL) < 0) {
+		return 0;
+	}
+	// Wait for scan result or timeout:
+	_status = WL_IDLE_STATUS;
+	while (!(_status & WL_SCAN_COMPLETED)) {
+		m2m_wifi_handle_events(NULL);
+	}
+	_status = tmp;
+	return m2m_wifi_get_num_ap_found();
+}
+
+int32_t rssi(uint8_t pos)
+{
+	wl_status_t tmp = _status;
+
+	// Get scan RSSI result:
+	if (m2m_wifi_req_scan_result(pos) < 0) {
+		return 0;
+	}
+
+	// Wait for connection or timeout:
+	_status = WL_IDLE_STATUS;
+	while (!(_status & WL_SCAN_COMPLETED)) {
+		m2m_wifi_handle_events(NULL);
+	}
+
+	_status = tmp;
+	int32_t rssi = _resolve;
+	_resolve = 0;
+	return rssi;
+}
+
+void ssid(uint8_t pos)
+{
+	wl_status_t tmp = _status;
+
+	// Get scan SSID result:
+	memset(_scan_ssid, 0, M2M_MAX_SSID_LEN);
+	if (m2m_wifi_req_scan_result(pos) < 0) {
+		return 0;
+	}
+
+	// Wait for connection or timeout:
+	_status = WL_IDLE_STATUS;
+	while (!(_status & WL_SCAN_COMPLETED)) {
+		m2m_wifi_handle_events(NULL);
+	}
+
+	_status = tmp;
+	_resolve = 0;
+}
+
+void listNetworks() {
+	// scan for nearby networks:
+	NRF_LOG_PRINTF("** Scan Networks **\r\n");
+	int numSsid = scanNetworks();
+	if (numSsid == -1) {
+		NRF_LOG_PRINTF("Couldn't get a wifi connection\r\n");
+		while (true);
+	}
+
+    // print the list of networks seen:
+	NRF_LOG_PRINTF("number of available networks:");
+	NRF_LOG_PRINTF(" %d\r\n",numSsid);
+
+	// print the network number and name for each network found:
+	for (int thisNet = 0; thisNet < numSsid; thisNet++) {
+		NRF_LOG_PRINTF("%d",thisNet);
+		NRF_LOG_PRINTF(") ");
+		ssid(thisNet);
+		NRF_LOG_PRINTF("%s",_scan_ssid);
+		NRF_LOG_PRINTF("\tSignal: ");
+		NRF_LOG_PRINTF("%d ", rssi(thisNet));
+		NRF_LOG_PRINTF(" dBm\r\n");
+    }
 }
 
 int main(void)
@@ -195,17 +277,12 @@ int main(void)
 		while (1) {
 		}
 	}
-//	uint8 mac;
-//	m2m_wifi_get_mac_address(mac);
-
-	//////
-
 
     while(1)
     {
-    	m2m_wifi_request_scan(M2M_WIFI_CH_ALL);
+    	listNetworks();
 		while (m2m_wifi_handle_events(NULL) != M2M_SUCCESS) {
 		}
-		nrf_delay_ms(1000);
+		nrf_delay_ms(5000);
     }
 }
