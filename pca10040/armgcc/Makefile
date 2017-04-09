@@ -67,6 +67,10 @@ $(abspath ../../../../../components/toolchain/system_nrf52.c) \
 /usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/nmbus.c \
 /usr/local/gcc_arm/sal-driver-atmel-winc1500/source/driver/source/nmspi.c \
 /usr/local/gcc_arm/sal-driver-atmel-winc1500/source/spi_flash/source/spi_flash.c \
+/usr/local/gcc_arm/nRF5_SDK_11/components/libraries/iot/json.c \
+/usr/local/gcc_arm/nRF5_SDK_11/components/libraries/iot/http/http_client.c \
+/usr/local/gcc_arm/nRF5_SDK_11/components/libraries/iot/http/stream_writer.c \
+/usr/local/gcc_arm/sal-driver-atmel-winc1500/source/socket/source/socket.c \
 
 #assembly files common to all targets
 ASM_SOURCE_FILES  = $(abspath ../../../../../components/toolchain/gcc/gcc_startup_nrf52.s)
@@ -93,6 +97,7 @@ INC_PATHS += -I$(abspath ../../../../../components/drivers_nrf/config)
 INC_PATHS += -I$(abspath ../../../../../components/drivers_nrf/spi_master)
 INC_PATHS += -I$(abspath ../../../../../components/drivers_nrf/gpiote)
 INC_PATHS += -I$(abspath ../../../../../components/toolchain/gcc)
+INC_PATHS += -I$(abspath ../../../../../components/libraries)
 INC_PATHS += -I /usr/local/gcc_arm/sal-driver-atmel-winc1500/source
 INC_PATHS += -I /usr/local/gcc_arm/nRF5_SDK_11/examples/peripheral/spi/pca10040/armgcc
 
