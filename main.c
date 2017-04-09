@@ -35,11 +35,12 @@
 #define STRING_HEADER "-- WINC1500 chip information example --"STRING_EOL \
 	"-- "BOARD_NAME " --"STRING_EOL	\
 	"-- Compiled: "__DATE__ " "__TIME__ " --"STRING_EOL
+#define MAIN_WLAN_SSID                  "BLWARSZAWA" /**< Destination SSID */
+#define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
+#define MAIN_WLAN_PSK                   "BUSINESSLINK" /**< Password for Destination SSID */
+
 /////
 #define SPI_INSTANCE  0 /**< SPI instance index. */
-#define MAIN_WLAN_SSID         "DEMO_AP"
-#define MAIN_WLAN_AUTH         M2M_WIFI_SEC_WPA_PSK
-#define MAIN_WLAN_PSK          "12345678"
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);  /**< SPI instance. */
 
 #define TEST_STRING "Nordic"
@@ -67,7 +68,16 @@ typedef enum {
 	WL_PROVISIONING_FAILED
 } wl_status_t;
 
+typedef enum {
+	WL_RESET_MODE = 0,
+	WL_STA_MODE,
+	WL_PROV_MODE,
+	WL_AP_MODE
+} wl_mode_t;
+
+static int status = WL_IDLE_STATUS;
 wl_status_t _status;
+wl_mode_t _mode;
 static uint32_t _localip;
 static uint32_t _submask;
 static uint32_t _gateway;
@@ -157,6 +167,40 @@ void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
 //    {
 //        NRF_LOG_PRINTF(" Received: %s\r\n",m_rx_buf);
 //    }
+}
+
+uint8_t connect(const char *ssid, uint8_t u8SecType, const void *pvAuthInfo)
+{
+//	if (!_init) {
+//		init();
+//	}
+
+	// Connect to router:
+	if (_dhcp) {
+		_localip = 0;
+		_submask = 0;
+		_gateway = 0;
+	}
+	if (m2m_wifi_connect((char*)ssid, strlen(ssid), u8SecType, (void*)pvAuthInfo, M2M_WIFI_CH_ALL) < 0) {
+		_status = WL_CONNECT_FAILED;
+		return _status;
+	}
+	_status = WL_IDLE_STATUS;
+	_mode = WL_STA_MODE;
+
+	// Wait for connection or timeout:
+	while (!(_status & WL_CONNECTED) &&	!(_status & WL_DISCONNECTED))
+	{
+		m2m_wifi_handle_events(NULL);
+	}
+	if (!(_status & WL_CONNECTED))
+	{
+		_mode = WL_RESET_MODE;
+	}
+
+	memset(_ssid, 0, M2M_MAX_SSID_LEN);
+	memcpy(_ssid, ssid, strlen(ssid));
+	return _status;
 }
 
 int8_t scanNetworks()
@@ -280,7 +324,15 @@ int main(void)
 
     while(1)
     {
-    	listNetworks();
+//    	listNetworks();
+	   	while ( status != WL_CONNECTED) {
+	   		NRF_LOG_PRINTF("Attempting to connect to WPA SSID: ");
+	   		NRF_LOG_PRINTF("%s\r\n", MAIN_WLAN_SSID);
+	   		// Connect to WPA/WPA2 network:
+	   		status = connect(MAIN_WLAN_SSID, MAIN_WLAN_AUTH, MAIN_WLAN_PSK);
+	   		// wait 5 seconds for connection:
+	   		nrf_delay_ms(5000);
+	   	}
 		while (m2m_wifi_handle_events(NULL) != M2M_SUCCESS) {
 		}
 		nrf_delay_ms(5000);
