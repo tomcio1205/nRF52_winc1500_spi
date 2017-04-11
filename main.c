@@ -37,12 +37,14 @@
 #define STRING_HEADER "-- WINC1500 chip information example --"STRING_EOL \
 	"-- "BOARD_NAME " --"STRING_EOL	\
 	"-- Compiled: "__DATE__ " "__TIME__ " --"STRING_EOL
-#define MAIN_WLAN_SSID                  "PolskiBus-545" /**< Destination SSID */
+//#define MAIN_WLAN_SSID                  "TP-LINK_9F2BAE" /**< Destination SSID */
+//#define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
+//#define MAIN_WLAN_PSK                   "!QAZxsw2" /**< Password for Destination SSID */
+#define MAIN_WLAN_SSID                  "NETIASPOT-52CC50" /**< Destination SSID */
 #define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
-#define MAIN_WLAN_PSK                   "" /**< Password for Destination SSID */
-
+#define MAIN_WLAN_PSK                   "c2svzibeu6i5" /**< Password for Destination SSID */
 /** server URL which will be requested */
-#define MAIN_HTTP_SERVER_TEST_URL        "http://ipinfo.io"
+#define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5/api/Device/F8F135BA-1426-4CD6-836C-7CD23C95FBA5"
 /** Method of server TEST request. */
 #define MAIN_HTTP_SERVER_TEST_METHOD     HTTP_METHOD_GET
 /** Instance of HTTP client module. */
@@ -173,7 +175,7 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
  */
 static void http_client_callback(struct http_client_module *module_inst, int type, union http_client_data *data)
 {
-	struct json_obj json, loc;
+	struct json_obj json, aT, iD, sP, iO, iT, n ;
 	switch (type) {
 	case HTTP_CLIENT_CALLBACK_SOCK_CONNECTED:
 		NRF_LOG_PRINTF("Connected\r\n");
@@ -189,10 +191,26 @@ static void http_client_callback(struct http_client_module *module_inst, int typ
 				(unsigned int)data->recv_response.content_length);
 		if (data->recv_response.content != NULL) {
 			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
-					json_find(&json, "loc", &loc) == 0) {
-				NRF_LOG_PRINTF("Location : %s\r\n", loc.value.s);
+				json_find(&json, "name", &iD) == 0) {
+					NRF_LOG_PRINTF("name : %s\r\n", iD.value.s);
+				}
+//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
+//				json_find(&json, "simulatePresence", &sP) == 0) {
+//					NRF_LOG_PRINTF("simulatePresence : %s\r\n", sP.value.s);
+//				}
+//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
+//				json_find(&json, "isOn", &iO) == 0) {
+//					NRF_LOG_PRINTF("isOn : %s\r\n", iO.value.s);
+//				}
+//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
+//				json_find(&json, "iconType", &iT) == 0) {
+//					NRF_LOG_PRINTF("iconType : %s\r\n", iT.value.s);
+//				}
+//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
+//				json_find(&json, "name", &n) == 0) {
+//					NRF_LOG_PRINTF("name : %s\r\n", n.value.s);
+//				}
 			}
-		}
 
 		break;
 
@@ -208,6 +226,10 @@ static void http_client_callback(struct http_client_module *module_inst, int typ
 			http_client_send_request(&http_client_module_inst, MAIN_HTTP_SERVER_TEST_URL, MAIN_HTTP_SERVER_TEST_METHOD, NULL, NULL);
 		}
 
+		break;
+
+	case HTTP_CLIENT_CALLBACK_RECV_CHUNKED_DATA:
+		NRF_LOG_PRINTF("Test");
 		break;
 	}
 }
@@ -439,21 +461,20 @@ int main(void)
 	socketInit();
 	registerSocketCallback(socket_event_handler, socket_resolve_handler);
 
-//    	listNetworks();
 	while ( status != WL_CONNECTED) {
 		NRF_LOG_PRINTF("Attempting to connect to WPA SSID: ");
 		NRF_LOG_PRINTF("%s\r\n", MAIN_WLAN_SSID);
 		// Connect to WPA/WPA2 network:
-//	   		status = wifi_connect(MAIN_WLAN_SSID, MAIN_WLAN_AUTH, MAIN_WLAN_PSK);
-		status = wifi_connect(MAIN_WLAN_SSID, M2M_WIFI_SEC_OPEN, (void *)0);
+	   	status = wifi_connect(MAIN_WLAN_SSID, MAIN_WLAN_AUTH, MAIN_WLAN_PSK);
+//		status = wifi_connect(MAIN_WLAN_SSID, M2M_WIFI_SEC_OPEN, (void *)0);
 		// wait 5 seconds for connection:
 		nrf_delay_ms(5000);
 	}
 	while(1)
 	{
+//    	listNetworks();
 		while (m2m_wifi_handle_events(NULL) != M2M_SUCCESS) {
 		}
+//		nrf_delay_ms(5000);
 	}
-
-//	nrf_delay_ms(5000);
 }
