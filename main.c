@@ -44,7 +44,7 @@
 #define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
 #define MAIN_WLAN_PSK                   "c2svzibeu6i5" /**< Password for Destination SSID */
 /** server URL which will be requested */
-#define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5/api/Device/F8F135BA-1426-4CD6-836C-7CD23C95FBA5"
+#define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5/getpowerstatus/F8F135BA-1426-4CD6-836C-7CD23C95FBA5"
 /** Method of server TEST request. */
 #define MAIN_HTTP_SERVER_TEST_METHOD     HTTP_METHOD_GET
 /** Instance of HTTP client module. */
@@ -85,7 +85,7 @@ typedef enum {
 	WL_AP_MODE
 } wl_mode_t;
 
-static int status = WL_IDLE_STATUS;
+//static int status = WL_IDLE_STATUS;
 wl_status_t _status;
 wl_mode_t _mode;
 static uint32_t _localip;
@@ -127,20 +127,47 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 		break;
 	}
 
+	case M2M_WIFI_RESP_DEFAULT_CONNECT:
+	{
+		tstrM2MDefaultConnResp *pstrDefaultConnResp = (tstrM2MDefaultConnResp *)pvMsg;
+		if (pstrDefaultConnResp->s8ErrorCode) {
+			_status = WL_DISCONNECTED;
+		}
+	}
+	break;
+
 	case M2M_WIFI_RESP_CON_STATE_CHANGED:
 	{
 		tstrM2mWifiStateChanged *pstrWifiState = (tstrM2mWifiStateChanged *)pvMsg;
 		if (pstrWifiState->u8CurrState == M2M_WIFI_CONNECTED) {
-			m2m_wifi_request_dhcp_client();
+
+			if (_mode == WL_STA_MODE && !_dhcp) {
+				_status = WL_CONNECTED;
+
+			} else if (_mode == WL_AP_MODE) {
+				_status = WL_AP_CONNECTED;
+			}
 		} else if (pstrWifiState->u8CurrState == M2M_WIFI_DISCONNECTED) {
-			NRF_LOG_PRINTF("Wi-Fi disconnected\r\n");
 
-			/* Request scan. */
-			m2m_wifi_request_scan(M2M_WIFI_CH_ALL);
+			if (_mode == WL_STA_MODE) {
+				_status = WL_DISCONNECTED;
+				if (_dhcp) {
+					_localip = 0;
+					_submask = 0;
+					_gateway = 0;
+				}
+				// Close sockets to clean state
+				// Clients will need to reconnect once the physical link will be re-established
+//				for (int i=0; i < TCP_SOCK_MAX; i++) {
+//					if (_client[i])
+//						_client[i]->stop();
+//				}
+			} else if (_mode == WL_AP_MODE) {
+				_status = WL_AP_LISTENING;
+			}
 		}
-
-		break;
 	}
+	break;
 
 	case M2M_WIFI_REQ_DHCP_CONF:
 	{
@@ -148,7 +175,7 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 		NRF_LOG_PRINTF("Wi-Fi connected\r\n");
 		NRF_LOG_PRINTF("Wi-Fi IP is %u.%u.%u.%u\r\n",
 				pu8IPAddress[0], pu8IPAddress[1], pu8IPAddress[2], pu8IPAddress[3]);
-		http_client_send_request(&http_client_module_inst, MAIN_HTTP_SERVER_TEST_URL, MAIN_HTTP_SERVER_TEST_METHOD, NULL, NULL);
+		_status = WL_CONNECTED;
 		break;
 	}
 
@@ -191,25 +218,9 @@ static void http_client_callback(struct http_client_module *module_inst, int typ
 				(unsigned int)data->recv_response.content_length);
 		if (data->recv_response.content != NULL) {
 			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
-				json_find(&json, "name", &iD) == 0) {
-					NRF_LOG_PRINTF("name : %s\r\n", iD.value.s);
+				json_find(&json, "isOn", &iD) == 0) {
+					NRF_LOG_PRINTF("isOn : %s\r\n", iD.value.s);
 				}
-//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
-//				json_find(&json, "simulatePresence", &sP) == 0) {
-//					NRF_LOG_PRINTF("simulatePresence : %s\r\n", sP.value.s);
-//				}
-//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
-//				json_find(&json, "isOn", &iO) == 0) {
-//					NRF_LOG_PRINTF("isOn : %s\r\n", iO.value.s);
-//				}
-//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
-//				json_find(&json, "iconType", &iT) == 0) {
-//					NRF_LOG_PRINTF("iconType : %s\r\n", iT.value.s);
-//				}
-//			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
-//				json_find(&json, "name", &n) == 0) {
-//					NRF_LOG_PRINTF("name : %s\r\n", n.value.s);
-//				}
 			}
 
 		break;
@@ -277,8 +288,6 @@ static void configure_http_client(void)
 
 	httpc_conf.recv_buffer_size = 256;
 //	httpc_conf.timer_inst = &swt_module_inst;
-	/* ipinfo.io send json format data if only client is a curl. */
-	httpc_conf.user_agent = "curl/7.10.6";
 
 	ret = http_client_init(&http_client_module_inst, &httpc_conf);
 	if (ret < 0) {
@@ -461,11 +470,11 @@ int main(void)
 	socketInit();
 	registerSocketCallback(socket_event_handler, socket_resolve_handler);
 
-	while ( status != WL_CONNECTED) {
+	while ( _status != WL_CONNECTED) {
 		NRF_LOG_PRINTF("Attempting to connect to WPA SSID: ");
 		NRF_LOG_PRINTF("%s\r\n", MAIN_WLAN_SSID);
 		// Connect to WPA/WPA2 network:
-	   	status = wifi_connect(MAIN_WLAN_SSID, MAIN_WLAN_AUTH, MAIN_WLAN_PSK);
+	   	wifi_connect(MAIN_WLAN_SSID, MAIN_WLAN_AUTH, MAIN_WLAN_PSK);
 //		status = wifi_connect(MAIN_WLAN_SSID, M2M_WIFI_SEC_OPEN, (void *)0);
 		// wait 5 seconds for connection:
 		nrf_delay_ms(5000);
@@ -473,8 +482,9 @@ int main(void)
 	while(1)
 	{
 //    	listNetworks();
+		http_client_send_request(&http_client_module_inst, MAIN_HTTP_SERVER_TEST_URL, MAIN_HTTP_SERVER_TEST_METHOD, NULL, NULL);
 		while (m2m_wifi_handle_events(NULL) != M2M_SUCCESS) {
 		}
-//		nrf_delay_ms(5000);
+		nrf_delay_ms(2000);
 	}
 }
