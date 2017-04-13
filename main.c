@@ -24,6 +24,7 @@
 #include "iot/http/http_client.h"
 #include "iot/json.h"
 #include <errno.h>
+#include "wifi_settings.h"
 
 #if defined(BOARD_PCA10036) || defined(BOARD_PCA10040)
 #define SPI_CS_PIN   7 /**< SPI CS Pin.*/
@@ -33,16 +34,6 @@
 #error "Example is not supported on that board."
 #endif
 
-#define STRING_EOL    "\r\n"
-#define STRING_HEADER "-- WINC1500 chip information example --"STRING_EOL \
-	"-- "BOARD_NAME " --"STRING_EOL	\
-	"-- Compiled: "__DATE__ " "__TIME__ " --"STRING_EOL
-#define MAIN_WLAN_SSID                  "TP-LINK_9F2BAE" /**< Destination SSID */
-#define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
-#define MAIN_WLAN_PSK                   "!QAZxsw2" /**< Password for Destination SSID */
-//#define MAIN_WLAN_SSID                  "NETIASPOT-52CC50" /**< Destination SSID */
-//#define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
-//#define MAIN_WLAN_PSK                   "c2svzibeu6i5" /**< Password for Destination SSID */
 /** server URL which will be requested */
 #define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5/api/DeviceMeasurement"
 //#define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5"
@@ -63,140 +54,9 @@ static uint8_t scan_request_index = 0;
 /** Number of APs found. */
 static uint8_t num_founded_ap = 0;
 
-typedef enum {
-	WL_NO_SHIELD = 255,
-	WL_IDLE_STATUS = 0,
-	WL_NO_SSID_AVAIL,
-	WL_SCAN_COMPLETED,
-	WL_CONNECTED,
-	WL_CONNECT_FAILED,
-	WL_CONNECTION_LOST,
-	WL_DISCONNECTED,
-	WL_AP_LISTENING,
-	WL_AP_CONNECTED,
-	WL_AP_FAILED,
-	WL_PROVISIONING,
-	WL_PROVISIONING_FAILED
-} wl_status_t;
-
-typedef enum {
-	WL_RESET_MODE = 0,
-	WL_STA_MODE,
-	WL_PROV_MODE,
-	WL_AP_MODE
-} wl_mode_t;
-
-//static int status = WL_IDLE_STATUS;
-wl_status_t _status;
-wl_mode_t _mode;
-static uint32_t _localip;
-static uint32_t _submask;
-static uint32_t _gateway;
-static int _dhcp;
-static uint32_t _resolve;
-static char _scan_ssid[M2M_MAX_SSID_LEN];
-static uint8_t _scan_auth;
-static uint8_t _scan_channel;
-static char _ssid[M2M_MAX_SSID_LEN];
-
 #define EXOSITE_EXAMPLE_HTTP_CONTENT_TYPE		"application/json"
 struct http_entity g_http_entity = {0,};
 char activate_data[100] = {0,};
-
-static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
-{
-	switch (u8MsgType) {
-	case M2M_WIFI_RESP_SCAN_DONE:
-	{
-		tstrM2mScanDone *pstrInfo = (tstrM2mScanDone *)pvMsg;
-		if (pstrInfo->u8NumofCh >= 1) {
-			_status = WL_SCAN_COMPLETED;
-		}
-
-		break;
-	}
-
-	case M2M_WIFI_RESP_SCAN_RESULT:
-	{
-		tstrM2mWifiscanResult *pstrScanResult = (tstrM2mWifiscanResult *)pvMsg;
-		uint16_t scan_ssid_len = strlen((const char *)pstrScanResult->au8SSID);
-		memset(_scan_ssid, 0, M2M_MAX_SSID_LEN);
-		if (scan_ssid_len) {
-			memcpy(_scan_ssid, (const char *)pstrScanResult->au8SSID, scan_ssid_len);
-		}
-		_resolve = pstrScanResult->s8rssi;
-		_scan_auth = pstrScanResult->u8AuthType;
-		_scan_channel = pstrScanResult->u8ch;
-		_status = WL_SCAN_COMPLETED;
-
-		break;
-	}
-
-	case M2M_WIFI_RESP_DEFAULT_CONNECT:
-	{
-		tstrM2MDefaultConnResp *pstrDefaultConnResp = (tstrM2MDefaultConnResp *)pvMsg;
-		if (pstrDefaultConnResp->s8ErrorCode) {
-			_status = WL_DISCONNECTED;
-		}
-	}
-	break;
-
-	case M2M_WIFI_RESP_CON_STATE_CHANGED:
-	{
-		tstrM2mWifiStateChanged *pstrWifiState = (tstrM2mWifiStateChanged *)pvMsg;
-		if (pstrWifiState->u8CurrState == M2M_WIFI_CONNECTED) {
-
-			if (_mode == WL_STA_MODE && !_dhcp) {
-				_status = WL_CONNECTED;
-
-			} else if (_mode == WL_AP_MODE) {
-				_status = WL_AP_CONNECTED;
-			}
-		} else if (pstrWifiState->u8CurrState == M2M_WIFI_DISCONNECTED) {
-
-			if (_mode == WL_STA_MODE) {
-				_status = WL_DISCONNECTED;
-				if (_dhcp) {
-					_localip = 0;
-					_submask = 0;
-					_gateway = 0;
-				}
-				// Close sockets to clean state
-				// Clients will need to reconnect once the physical link will be re-established
-//				for (int i=0; i < TCP_SOCK_MAX; i++) {
-//					if (_client[i])
-//						_client[i]->stop();
-//				}
-			} else if (_mode == WL_AP_MODE) {
-				_status = WL_AP_LISTENING;
-			}
-		}
-	}
-	break;
-
-	case M2M_WIFI_REQ_DHCP_CONF:
-	{
-		uint8_t *pu8IPAddress = (uint8_t *)pvMsg;
-		NRF_LOG_PRINTF("Wi-Fi connected\r\n");
-		NRF_LOG_PRINTF("Wi-Fi IP is %u.%u.%u.%u\r\n",
-				pu8IPAddress[0], pu8IPAddress[1], pu8IPAddress[2], pu8IPAddress[3]);
-		_status = WL_CONNECTED;
-		break;
-	}
-
-	case M2M_WIFI_RESP_CURRENT_RSSI:
-	{
-		/* This message type is triggered by "m2m_wifi_req_curr_rssi()" function. */
-		_resolve = *((int8_t *)pvMsg);
-		break;
-	}
-
-	default:
-	{
-		break;
-	}
-	}
-}
 
 /**
  * \brief Callback of the HTTP client.
@@ -359,122 +219,6 @@ void spi_event_handler(nrf_drv_spi_evt_t const * p_event)
 //    }
 }
 
-uint8_t wifi_connect(const char *ssid, uint8_t u8SecType, const void *pvAuthInfo)
-{
-//	if (!_init) {
-//		init();
-//	}
-
-	// Connect to router:
-	if (_dhcp) {
-		_localip = 0;
-		_submask = 0;
-		_gateway = 0;
-	}
-	if (m2m_wifi_connect((char*)ssid, strlen(ssid), u8SecType, (void*)pvAuthInfo, M2M_WIFI_CH_ALL) < 0) {
-		_status = WL_CONNECT_FAILED;
-		return _status;
-	}
-	_status = WL_IDLE_STATUS;
-	_mode = WL_STA_MODE;
-
-	// Wait for connection or timeout:
-	while (!(_status & WL_CONNECTED) &&	!(_status & WL_DISCONNECTED))
-	{
-		m2m_wifi_handle_events(NULL);
-	}
-	if (!(_status & WL_CONNECTED))
-	{
-		_mode = WL_RESET_MODE;
-	}
-
-	memset(_ssid, 0, M2M_MAX_SSID_LEN);
-	memcpy(_ssid, ssid, strlen(ssid));
-	return _status;
-}
-
-int8_t scanNetworks()
-{
-	wl_status_t tmp = _status;
-	// Start scan:
-	if (m2m_wifi_request_scan(M2M_WIFI_CH_ALL) < 0) {
-		return 0;
-	}
-	// Wait for scan result or timeout:
-	_status = WL_IDLE_STATUS;
-	while (!(_status & WL_SCAN_COMPLETED)) {
-		m2m_wifi_handle_events(NULL);
-	}
-	_status = tmp;
-	return m2m_wifi_get_num_ap_found();
-}
-
-int32_t rssi(uint8_t pos)
-{
-	wl_status_t tmp = _status;
-
-	// Get scan RSSI result:
-	if (m2m_wifi_req_scan_result(pos) < 0) {
-		return 0;
-	}
-
-	// Wait for connection or timeout:
-	_status = WL_IDLE_STATUS;
-	while (!(_status & WL_SCAN_COMPLETED)) {
-		m2m_wifi_handle_events(NULL);
-	}
-
-	_status = tmp;
-	int32_t rssi = _resolve;
-	_resolve = 0;
-	return rssi;
-}
-
-void ssid(uint8_t pos)
-{
-	wl_status_t tmp = _status;
-
-	// Get scan SSID result:
-	memset(_scan_ssid, 0, M2M_MAX_SSID_LEN);
-	if (m2m_wifi_req_scan_result(pos) < 0) {
-		return 0;
-	}
-
-	// Wait for connection or timeout:
-	_status = WL_IDLE_STATUS;
-	while (!(_status & WL_SCAN_COMPLETED)) {
-		m2m_wifi_handle_events(NULL);
-	}
-
-	_status = tmp;
-	_resolve = 0;
-}
-
-void listNetworks() {
-	// scan for nearby networks:
-	NRF_LOG_PRINTF("** Scan Networks **\r\n");
-	int numSsid = scanNetworks();
-	if (numSsid == -1) {
-		NRF_LOG_PRINTF("Couldn't get a wifi connection\r\n");
-		while (true);
-	}
-
-    // print the list of networks seen:
-	NRF_LOG_PRINTF("number of available networks:");
-	NRF_LOG_PRINTF(" %d\r\n",numSsid);
-
-	// print the network number and name for each network found:
-	for (int thisNet = 0; thisNet < numSsid; thisNet++) {
-		NRF_LOG_PRINTF("%d",thisNet);
-		NRF_LOG_PRINTF(") ");
-		ssid(thisNet);
-		NRF_LOG_PRINTF("%s",_scan_ssid);
-		NRF_LOG_PRINTF("\tSignal: ");
-		NRF_LOG_PRINTF("%d ", rssi(thisNet));
-		NRF_LOG_PRINTF(" dBm\r\n");
-    }
-}
-
 int main(void)
 {
 	NRF_LOG_INIT();
@@ -527,13 +271,13 @@ int main(void)
 	}
 	while(1)
 	{
-//    	listNetworks();
+   	// listNetworks();
 		sprintf(activate_data,"{\n \"powerConsumption\": 23,\n \"deviceId\": \"F8F135BA-1426-4CD6-836C-7CD23C95FBA5\"\n}");
 		struct http_entity * entity = _exosite_example_http_set_default_entity();
 		entity->priv_data = (void*)activate_data;
 		http_client_send_request(&http_client_module_inst, MAIN_HTTP_SERVER_TEST_URL, MAIN_HTTP_SERVER_TEST_METHOD, entity, NULL);
 		while (m2m_wifi_handle_events(NULL) != M2M_SUCCESS) {
 		}
-		nrf_delay_ms(1000);
+		nrf_delay_ms(2000);
 	}
 }
