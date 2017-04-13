@@ -37,16 +37,17 @@
 #define STRING_HEADER "-- WINC1500 chip information example --"STRING_EOL \
 	"-- "BOARD_NAME " --"STRING_EOL	\
 	"-- Compiled: "__DATE__ " "__TIME__ " --"STRING_EOL
-//#define MAIN_WLAN_SSID                  "TP-LINK_9F2BAE" /**< Destination SSID */
-//#define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
-//#define MAIN_WLAN_PSK                   "!QAZxsw2" /**< Password for Destination SSID */
-#define MAIN_WLAN_SSID                  "NETIASPOT-52CC50" /**< Destination SSID */
+#define MAIN_WLAN_SSID                  "TP-LINK_9F2BAE" /**< Destination SSID */
 #define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
-#define MAIN_WLAN_PSK                   "c2svzibeu6i5" /**< Password for Destination SSID */
+#define MAIN_WLAN_PSK                   "!QAZxsw2" /**< Password for Destination SSID */
+//#define MAIN_WLAN_SSID                  "NETIASPOT-52CC50" /**< Destination SSID */
+//#define MAIN_WLAN_AUTH                  M2M_WIFI_SEC_WPA_PSK /**< Security manner */
+//#define MAIN_WLAN_PSK                   "c2svzibeu6i5" /**< Password for Destination SSID */
 /** server URL which will be requested */
-#define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5/getpowerstatus/F8F135BA-1426-4CD6-836C-7CD23C95FBA5"
+#define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5/api/DeviceMeasurement"
+//#define MAIN_HTTP_SERVER_TEST_URL        "192.168.1.5"
 /** Method of server TEST request. */
-#define MAIN_HTTP_SERVER_TEST_METHOD     HTTP_METHOD_GET
+#define MAIN_HTTP_SERVER_TEST_METHOD     HTTP_METHOD_POST
 /** Instance of HTTP client module. */
 struct http_client_module http_client_module_inst;
 
@@ -97,6 +98,10 @@ static char _scan_ssid[M2M_MAX_SSID_LEN];
 static uint8_t _scan_auth;
 static uint8_t _scan_channel;
 static char _ssid[M2M_MAX_SSID_LEN];
+
+#define EXOSITE_EXAMPLE_HTTP_CONTENT_TYPE		"application/json"
+struct http_entity g_http_entity = {0,};
+char activate_data[100] = {0,};
 
 static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
 {
@@ -202,7 +207,7 @@ static void wifi_cb(uint8_t u8MsgType, void *pvMsg)
  */
 static void http_client_callback(struct http_client_module *module_inst, int type, union http_client_data *data)
 {
-	struct json_obj json, aT, iD, sP, iO, iT, n ;
+	struct json_obj json, iO;
 	switch (type) {
 	case HTTP_CLIENT_CALLBACK_SOCK_CONNECTED:
 		NRF_LOG_PRINTF("Connected\r\n");
@@ -218,8 +223,8 @@ static void http_client_callback(struct http_client_module *module_inst, int typ
 				(unsigned int)data->recv_response.content_length);
 		if (data->recv_response.content != NULL) {
 			if (json_create(&json, data->recv_response.content, data->recv_response.content_length) == 0 &&
-				json_find(&json, "isOn", &iD) == 0) {
-					NRF_LOG_PRINTF("isOn : %s\r\n", iD.value.s);
+				json_find(&json, "isOn", &iO) == 0) {
+					NRF_LOG_PRINTF("isOn : %s\r\n", iO.value.s);
 				}
 			}
 
@@ -287,6 +292,7 @@ static void configure_http_client(void)
 	http_client_get_config_defaults(&httpc_conf);
 
 	httpc_conf.recv_buffer_size = 256;
+	httpc_conf.send_buffer_size = 1024;
 //	httpc_conf.timer_inst = &swt_module_inst;
 
 	ret = http_client_init(&http_client_module_inst, &httpc_conf);
@@ -297,6 +303,46 @@ static void configure_http_client(void)
 	}
 
 	http_client_register_callback(&http_client_module_inst, http_client_callback);
+}
+
+const char* _exosite_example_http_get_contents_type(void *priv_data)
+{
+	return (const char*)EXOSITE_EXAMPLE_HTTP_CONTENT_TYPE;
+}
+
+int _exosite_example_http_get_contents_length(void *priv_data)
+{
+	return strlen( (char*)priv_data);
+}
+
+int _exosite_example_http_read(void *priv_data, char *buffer, uint32_t size, uint32_t written)
+{
+	int32_t length = 0;
+
+	if(priv_data)
+	{
+		length = strlen( (char*)priv_data);
+		memcpy(buffer,(char*)priv_data, length);
+	}
+
+	return length;
+}
+
+void _exosite_example_http_close(void *priv_data)
+{
+}
+
+struct http_entity * _exosite_example_http_set_default_entity()
+{
+	memset(&g_http_entity, 0x00, sizeof(struct http_entity));
+	g_http_entity.close = _exosite_example_http_close;
+	g_http_entity.is_chunked = 0;
+	g_http_entity.priv_data = NULL;
+	g_http_entity.read = _exosite_example_http_read;
+	g_http_entity.get_contents_length = _exosite_example_http_get_contents_length;
+	g_http_entity.get_contents_type = _exosite_example_http_get_contents_type;
+
+	return &g_http_entity;
 }
 
 /**
@@ -482,9 +528,12 @@ int main(void)
 	while(1)
 	{
 //    	listNetworks();
-		http_client_send_request(&http_client_module_inst, MAIN_HTTP_SERVER_TEST_URL, MAIN_HTTP_SERVER_TEST_METHOD, NULL, NULL);
+		sprintf(activate_data,"{\n \"powerConsumption\": 23,\n \"deviceId\": \"F8F135BA-1426-4CD6-836C-7CD23C95FBA5\"\n}");
+		struct http_entity * entity = _exosite_example_http_set_default_entity();
+		entity->priv_data = (void*)activate_data;
+		http_client_send_request(&http_client_module_inst, MAIN_HTTP_SERVER_TEST_URL, MAIN_HTTP_SERVER_TEST_METHOD, entity, NULL);
 		while (m2m_wifi_handle_events(NULL) != M2M_SUCCESS) {
 		}
-		nrf_delay_ms(2000);
+		nrf_delay_ms(1000);
 	}
 }
