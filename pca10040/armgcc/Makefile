@@ -72,6 +72,7 @@ $(abspath ../../../../../components/toolchain/system_nrf52.c) \
 /usr/local/gcc_arm/nRF5_SDK_11/components/libraries/iot/http/stream_writer.c \
 /usr/local/gcc_arm/sal-driver-atmel-winc1500/source/socket/source/socket.c \
 /usr/local/gcc_arm/nRF5_SDK_11/examples/peripheral/spi/wifi_settings/wifi_settings.c \
+/usr/local/gcc_arm/nRF5_SDK_11/examples/peripheral/spi/http_settings/http_settings.c \
 
 #assembly files common to all targets
 ASM_SOURCE_FILES  = $(abspath ../../../../../components/toolchain/gcc/gcc_startup_nrf52.s)
@@ -102,6 +103,7 @@ INC_PATHS += -I$(abspath ../../../../../components/libraries)
 INC_PATHS += -I /usr/local/gcc_arm/sal-driver-atmel-winc1500/source
 INC_PATHS += -I /usr/local/gcc_arm/nRF5_SDK_11/examples/peripheral/spi/pca10040/armgcc
 INC_PATHS += -I /usr/local/gcc_arm/nRF5_SDK_11/examples/peripheral/spi/wifi_settings
+INC_PATHS += -I /usr/local/gcc_arm/nRF5_SDK_11/examples/peripheral/spi/http_settings
 
 OBJECT_DIRECTORY = _build
 LISTING_DIRECTORY = $(OBJECT_DIRECTORY)

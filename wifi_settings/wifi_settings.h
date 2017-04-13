@@ -9,7 +9,8 @@
 #define WIFI_SETTINGS_H_
 
 #include "driver/include/m2m_types.h"
-
+#include <string.h>
+#include "driver/include/m2m_wifi.h"
 
 /**< Define wifi connection settings. */
 // #define MAIN_WLAN_SSID                  "NETIASPOT-60A5F0" /**< Destination SSID */
